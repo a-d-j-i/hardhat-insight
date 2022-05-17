@@ -1,0 +1,38 @@
+{
+    "name": "hardhat-insight",
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Prints contract details based on the source-mapping with Hardhat",
+    "keywords": [
+        "hardhat",
+        "buidler",
+        "solidity",
+        "solc",
+        "smart-contracts",
+        "ethereum",
+        "blockchain",
+        "bytecode",
+        "size",
+        "gas"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/a-d-j-i/hardhat-insight.git"
+    },
+    "author": "Andres Adjimann",
+    "main": "index.js",
+    "types": "index.d.ts",
+    "peerDependencies": {
+        "hardhat": "^2.0.0"
+    },
+    "devDependencies": {
+        "hardhat": "^2.0.0"
+    },
+    "bugs": {
+        "url": "https://github.com/a-d-j-i/hardhat-insight/issues"
+    },
+    "homepage": "https://github.com/a-d-j-i/hardhat-insight.git",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    }
+}
