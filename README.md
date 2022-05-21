@@ -16,7 +16,7 @@ This plugin read the compiler output and prints the size used by each routine an
 npm install hardhat-insight
 ```
 
-And add the following statement to your `hardhat.config.ts`:
+And add the following statement to your `hardhat.config.js`:
 
 ```ts
 import "hardhat-insight";
