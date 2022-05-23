@@ -158,20 +158,6 @@ function dissasemble(instruction) {
   return assembly[instruction];
 }
 
-function decodeOpcodes(opcodes) {
-  const strs = opcodes.trim().split(' ');
-  const ret = [];
-  for (let i = 0; i < strs.length; i++) {
-    if (strs[i].startsWith('PUSH')) {
-      ret.push(strs[i] + ' ' + strs[i + 1]);
-      i++;
-    } else {
-      ret.push(strs[i]);
-    }
-  }
-  return ret;
-}
-
 function uncompressSourcemaps(compressedSourcemap) {
   const mappings = [
     {
@@ -209,20 +195,22 @@ function uncompressSourcemaps(compressedSourcemap) {
   return mappings;
 }
 
-function decodeInstructions(normalizedCode) {
+function decodeInstructions(bytecode, normalizedCode) {
   const instructions = [];
   for (let pc = 0, idx = 0; pc < normalizedCode.length; pc++, idx++) {
     const opcode = normalizedCode[pc];
     if (isPush(opcode)) {
       const length = getPushLength(opcode);
+      // OBS: pc + 1 + length can be greater than normalizedCode.length (when we disassemble invalid code)
+      const bytes = normalizedCode.slice(pc, pc + 1 + length);
       instructions.push({
         pc,
         idx,
         opcode,
         jumpType: false,
-        pushData: normalizedCode.slice(pc + 1, pc + 1 + length),
-        bytes: normalizedCode.slice(pc, pc + 1 + length),
-        size: 1 + length,
+        pushData: bytes.slice(1, bytes.length),
+        bytes,
+        size: bytes.length,
       });
       pc += length;
     } else {
@@ -236,6 +224,11 @@ function decodeInstructions(normalizedCode) {
         asm: dissasemble(opcode),
       });
     }
+  }
+  // Add source map to instructions
+  const sourceMap = uncompressSourcemaps(bytecode.sourceMap);
+  for (let i = 0; i < sourceMap.length; i++) {
+    instructions[i].sourceMap = sourceMap[i];
   }
   return instructions;
 }
@@ -269,14 +262,13 @@ function travelAst(depth, node, todo) {
 
 function findCurrentContractOutput(buildInfo, fullName) {
   let contractId = -1;
-  let bytecode;
+  let ret;
   for (const sourceName in buildInfo.output.contracts) {
     for (const source in buildInfo.output.contracts[sourceName]) {
       if (fullName !== sourceName + ':' + source) {
         continue;
       }
       const data = buildInfo.output.contracts[sourceName][source];
-      // log('generatedSources->', data.evm.bytecode.generatedSources);
       // This is an abstract contract
       if (data.evm.bytecode.object === '') {
         continue;
@@ -286,13 +278,42 @@ function findCurrentContractOutput(buildInfo, fullName) {
         return;
       }
       contractId = buildInfo.output.sources[sourceName].id;
-      bytecode = data.evm.deployedBytecode;
+      ret = {
+        deployedBytecode: data.evm.deployedBytecode,
+        bytecode: data.evm.bytecode,
+        generatedSources: data.evm.bytecode.generatedSources
+      }
     }
   }
-  return {contractId, bytecode};
+  return {contractId, ...ret};
 }
 
-function getAst(buildInfo) {
+function cloneAst(ast) {
+  // Clone AST and add some values.
+  return travelAst(0, ast, (depth, node) => {
+    const ret = {
+      instructions: [],
+    };
+    // clone some props
+    ['id', 'nodeType', 'name', 'kind', 'absolutePath', 'src'].forEach(
+      (x) => (ret[x] = node[x])
+    );
+    if (node.src) {
+      const sourceMap = uncompressSourcemaps(node.src);
+      if (sourceMap.length !== 1) {
+        console.error('INVALID SOURCE MAP FOR A NODE', node.src);
+      }
+      if (sourceMap.length > 0) {
+        ret.sourceMap = sourceMap;
+        ret.start = sourceMap[0].location.offset;
+        ret.end = sourceMap[0].location.offset + sourceMap[0].location.length;
+      }
+    }
+    return ret;
+  });
+}
+
+function getAst(buildInfo, generatedSources) {
   const internalCode = (id) => ({
     id,
     sourceName: 'internal',
@@ -306,63 +327,27 @@ function getAst(buildInfo) {
   };
   for (const sourceName in buildInfo.output.sources) {
     const data = buildInfo.output.sources[sourceName];
-    // Clone AST and add some values.
-    const ast = travelAst(0, data.ast, (depth, node) => {
-      const ret = {
-        instructions: [],
-      };
-      // clone some props
-      ['id', 'nodeType', 'name', 'absolutePath', 'src'].forEach(
-        (x) => (ret[x] = node[x])
-      );
-      if (node.src) {
-        const sourceMap = uncompressSourcemaps(node.src);
-        if (sourceMap.length !== 1) {
-          console.error('INVALID SOURCE MAP FOR A NODE', node.src);
-        }
-        if (sourceMap.length > 0) {
-          ret.sourceMap = sourceMap;
-          ret.start = sourceMap[0].location.offset;
-          ret.end = sourceMap[0].location.offset + sourceMap[0].location.length;
-        }
-      }
-      return ret;
-    });
     fullAst[data.id] = {
       sourceName,
       id: data.id,
       code: buildInfo.input.sources[sourceName].content,
-      ast,
+      ast: cloneAst(data.ast),
     };
+  }
+  if (generatedSources) {
+    for (const g of generatedSources) {
+      fullAst[g.id] = {
+        sourceName: g.name,
+        id: g.id,
+        code: g.contents,
+        ast: cloneAst(g.ast),
+      }
+    }
   }
   return fullAst;
 }
 
-function processContract(fullName, buildInfo) {
-  // Search current contract bytecode and add instructions to AST
-  const {bytecode} = findCurrentContractOutput(buildInfo, fullName);
-  if (!bytecode) {
-    return;
-  }
-  const libraryAddressPositions = getLibraryAddressPositions(bytecode);
-  const normalizedCode = normalizeCompilerOutputBytecode(
-    bytecode.object,
-    libraryAddressPositions
-  );
-  const instructions = decodeInstructions(normalizedCode);
-  // Add source map to instructions
-  const sourceMap = uncompressSourcemaps(bytecode.sourceMap);
-  for (let i = 0; i < sourceMap.length; i++) {
-    instructions[i].sourceMap = sourceMap[i];
-  }
-  // Add opcodes to instructions
-  const opcodes = decodeOpcodes(bytecode.opcodes);
-  for (let i = 0; i < opcodes.length; i++) {
-    instructions[i].str = opcodes[i];
-  }
-  // Populate AST with instructions
-  const fullAst = getAst(buildInfo);
-  const missing = {};
+function populateAst(fullAst, missing, instructions) {
   for (let i = 0; i < instructions.length; i++) {
     const instruction = instructions[i];
     if (!instructions[i].sourceMap) {
@@ -371,19 +356,39 @@ function processContract(fullName, buildInfo) {
     }
     const location = instructions[i].sourceMap.location;
     const pos = location.offset;
-    //  TODO: Why, fix this !!!
     if (!fullAst[location.file]) {
       missing[location.file] = true; // print just once
       fullAst[-3].ast.instructions.push(instruction);
       continue;
     }
     fullAst[location.file].touched = true;
+    let added = false;
     travelAst(0, fullAst[location.file].ast, (depth, node) => {
       if (!node.start || !node.end || (pos >= node.start && pos <= node.end)) {
+        added = true;
         node.instructions.push(instruction);
       }
     });
+    if (!added) {
+      console.log("INSTRUCTION NOT ADDED-->", instruction);
+    }
   }
+}
+
+function processContract(fullName, buildInfo) {
+  // Search current contract bytecode and add instructions to AST
+  const {deployedBytecode, bytecode, generatedSources} = findCurrentContractOutput(buildInfo, fullName);
+  if (!deployedBytecode) {
+    return;
+  }
+  const normalizedCode = normalizeCompilerOutputBytecode(
+    deployedBytecode.object,
+    getLibraryAddressPositions(deployedBytecode)
+  );
+  const instructions = decodeInstructions(deployedBytecode, normalizedCode);
+  const fullAst = getAst(buildInfo, generatedSources);
+  const missing = {};
+  populateAst(fullAst, missing, instructions)
   return {
     fullName,
     instructions,
@@ -421,12 +426,12 @@ function printAsm(log, spacer, instructions) {
       i.pc,
       'opcode',
       '(',
-      i.opcode.toString(16),
+      i.opcode.toString(16).padStart(2),
       ') ',
-      i.str,
+      i.asm && i.asm.name ? i.asm.name : "INVALID",
       'size',
       i.size,
-      ...(i.sourceMap && i.sourceMap.location
+      ...(i.sourceMap && i.sourceMap.location && i.sourceMap.location >= 0
         ? [
           'location file',
           i.sourceMap.location.file,
@@ -445,8 +450,11 @@ const sum = (a) => a.reduce((acc, val) => acc + val.size, 0);
 function printContract(
   log,
   {fullName, instructions, fullAst, normalizedCode, missing},
-  withAsm = false
+  options
 ) {
+  const withAsm = !!options.asm;
+  const withGas = !!options.gas;
+  const full = !!options.full;
   log(
     '----------------------------',
     fullName,
@@ -471,11 +479,11 @@ function printContract(
       const txt = [
         spacer,
         node.absolutePath,
-        // 'Node id',
-        // node.id,
-        // node.name,
         'type',
         node.nodeType,
+        node.name || node.kind,
+        // 'Node id',
+        // node.id,
         // 'location',
         // node.src,
       ]
@@ -492,47 +500,57 @@ function printContract(
           )
         : 0;
       const instr = node.instructions ? node.instructions.length : 0;
-      if (size > 0 || instr > 0) {
+      if (full || size > 0 || instr > 0) {
         const txt2 = 'instructions: ' + instr;
         log(
-          txt,
-          ' '.repeat(120 - txt.length),
-          txt2,
-          ' '.repeat(20 - txt2.length),
-          'size: ' + size,
-          'gas estimate: ' + gasSum
+          ...[
+            txt,
+            ' '.repeat(Math.max(2, 120 - txt.length)),
+            txt2,
+            ' '.repeat(Math.max(2, 20 - txt2.length)),
+            'size: ' + size,
+            withGas && 'gas estimate: ' + gasSum,
+          ].filter((x) => !!x)
         );
+      }
+      if (full || size > 0) {
+        const excluded = [
+          'SourceUnit',
+          'ImportDirective',
+          'PragmaDirective',
+          'ContractDefinition',
+          'FunctionDefinition',
+          'YulFunctionDefinition',
+        ];
+        if (!excluded.includes(node.nodeType) && node.sourceMap) {
+          printSource(log, spacer + '    ', node.sourceMap, fullAst);
+        }
       }
       if (withAsm) {
         printAsm(log, spacer, node.instructions);
-      }
-      if (
-        (node.nodeType === 'FunctionDefinition' ||
-          node.nodeType === 'VariableDeclaration') &&
-        node.sourceMap
-      ) {
-        printSource(log, spacer + '    ', node.sourceMap, fullAst);
       }
     });
   }
   log('----------------------------');
   const internal = fullAst[-1].ast.instructions;
-  log('internal/shared code (no file)');
-  log('cant', internal.length, 'total size:', sum(internal));
+  log('Internal/shared code (with no corresponding file)');
+  log('Cant', internal.length, 'total size:', sum(internal));
   if (withAsm) {
     printAsm(log, '    ', internal);
   }
   const unknown = fullAst[-2].ast.instructions;
-  log('unknown (no source map)');
-  log('cant', unknown.length, 'total size:', sum(unknown));
+  log('Unknown (no source map)');
+  log('Cant', unknown.length, 'total size:', sum(unknown));
   if (withAsm) {
     printAsm(log, '    ', unknown);
   }
   const notFound = fullAst[-3].ast.instructions;
-  log('notFound (strange), Missing ids:', missing.join(' '));
-  log('cant', notFound.length, 'total size:', sum(notFound));
-  if (withAsm) {
-    printAsm(log, '    ', notFound);
+  if (notFound.length > 0) {
+    log('NotFound (strange), Missing ids:', missing.join(' '));
+    log('Cant', notFound.length, 'total size:', sum(notFound));
+    if (withAsm) {
+      printAsm(log, '    ', notFound);
+    }
   }
   log('END ----------------------------', fullName);
 }
@@ -540,6 +558,8 @@ function printContract(
 task('insight', 'Print info about the contracts')
   .addFlag('nocompile', "Don't compile before running this task")
   .addFlag('asm', 'Print assembly instructions')
+  .addFlag('gas', 'Print gas estimate')
+  .addFlag('full', 'Print everything, event the lines of code that have size == 0')
   .addOptionalParam('only', 'Print only those that matches')
   .addOptionalParam('except', 'Skip those that matches')
   .setAction(async function (args, hre) {
@@ -563,7 +583,7 @@ task('insight', 'Print info about the contracts')
       const contractData = processContract(fullName, buildInfo);
       const log = console.log;
       if (contractData) {
-        printContract(log, contractData, !!args.asm);
+        printContract(log, contractData, args);
       } else {
         log(fullName, 'is abstract, no bytecode');
       }
