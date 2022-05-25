@@ -1,4 +1,4 @@
-require("./tasks/insight")
+require("./index")
 
 module.exports = {
   solidity: {

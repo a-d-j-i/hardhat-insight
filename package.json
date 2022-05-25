@@ -36,5 +36,8 @@
         "test": "hardhat test",
         "insight": "hardhat insight"
     },
-    "files": ["tasks/insight.js"]
+    "files": [
+        "index.js",
+        "lib/"
+    ]
 }
