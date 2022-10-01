@@ -1,6 +1,6 @@
 const hre = require("hardhat");
-const {processContract} = require("../tasks/insight");
 const assert = require("assert");
+const {processContract} = require("../lib/model");
 
 describe("Hardhat insight test", function () {
   ["0.4", "0.5", "0.6", "0.7", "0.8"].forEach(version =>
