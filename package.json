@@ -1,6 +1,6 @@
 {
     "name": "hardhat-insight",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "license": "MIT",
     "description": "Prints contract details based on the source-mapping with Hardhat",
     "keywords": [
