@@ -24,10 +24,15 @@ task(TASK_COMPILE)
       for (const file of files) {
         const inFile = path.join(templateDir, file);
         const outFile = path.join(outDir, file)
+        const moreThan7 = parseInt(version.split(".")[1]) >= 7;
         const data = fs.readFileSync(inFile, 'utf8')
           .replace(/___compilerVersion___/g, version)
           .replace(/___constructorVisibility___/g,
-            parseInt(version.split(".")[1]) >= 7 ? "" : "public");
+            moreThan7 ? "" : "public")
+          .split("\n")
+          .filter(x => !x.trim().startsWith("//>7") || moreThan7)
+          .map(x => x.trim().startsWith("//>7") ? x.trim().slice(4) : x)
+          .join("\n");
         fs.writeFileSync(outFile, data, 'utf8');
       }
     }

@@ -1,6 +1,6 @@
 const {TASK_COMPILE} = require('hardhat/builtin-tasks/task-names');
 const {printContract} = require("./lib/view");
-const {processContract, getAst, sumSlots, processContractStorage} = require("./lib/model");
+const {processContract, processContractStorage} = require("./lib/model");
 
 task('insight', 'Print info about the contracts')
   .addFlag('nocompile', "Don't compile before running this task")
@@ -51,6 +51,8 @@ task('storage', 'Print the storage structure of a set of contracts')
       args.only && Array.isArray(args.only) ? args.only : [args.only];
     const except =
       args.except && Array.isArray(args.except) ? args.except : [args.except];
+    const table = {};
+    const names = [];
     for (const fullName of fullNames) {
       if (args.only && !only.some((m) => fullName.match(m))) {
         continue;
@@ -58,12 +60,20 @@ task('storage', 'Print the storage structure of a set of contracts')
       if (args.except && except.some((m) => fullName.match(m))) {
         continue;
       }
+      names.push(fullName);
       const buildInfo = await hre.artifacts.getBuildInfo(fullName);
       const storage = processContractStorage(fullName, buildInfo);
-      console.log("----------------->", fullName);
-      console.log(["slot", "label".padEnd(30), "type"].join("\t"))
       for (const s of storage) {
-        console.log([s.slot,s.label.padEnd(30), s.type].join("\t"))
+        if (!table[s.slot]) {
+          table[s.slot] = {};
+        }
+        table[s.slot][s.contract] = s;
       }
+    }
+    const pad = names.reduce((acc, val) => val.length > acc ? val.length : acc, 0) + 1;
+    console.log(["slot", ...names.map(x => x.padEnd(pad))].join("\t"))
+    for (const slot of Object.keys(table)) {
+      const t = table[slot];
+      console.log([slot, ...names.map(x => (t[x] ? t[x].label : "").padEnd(pad))].join("\t"))
     }
   })
