@@ -1,6 +1,6 @@
 const hre = require("hardhat");
 const assert = require("assert");
-const {processContract, sumSlots} = require("../lib/model");
+const {sumSlots} = require("../lib/model");
 
 describe(`tests for sumSlots`, function () {
   it("nothing", async function () {
