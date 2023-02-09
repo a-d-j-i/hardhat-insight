@@ -1,14 +1,18 @@
-[![hardhat](https://hardhat.org/hardhat-plugin-badge.svg?1)](https://hardhat.org)
+[hardhat](https://hardhat.org)
 
 # hardhat-insight
 
-Prints contract details based on the source-mapping with Hardhat
+Prints contract details based on the source-mapping (compiler AST output) with Hardhat
 
 [Hardhat-Insight](http://hardhat.org) plugin example.
 
 ## What
 
-This plugin read the compiler output and prints the size used by each routine and the gas used.
+This plugin has two uses:
+- read the compiler output and prints the size used by each routine and and estimate of the gas used.
+- compare the storage slots of different contracts
+(similar to [Storage Layout Plugin](https://www.npmjs.com/package/hardhat-storage-layout) based on the AST so it can
+support old solidity versions ( <0.5.13 )
 
 ## Installation
 
@@ -28,7 +32,9 @@ Nothing required
 
 ## Tasks
 
-This plugin adds the `insight` task to Hardhat, execute it to get contract detailed information.
+This plugin adds the following tasks to Hardhat:
+- `insight`: execute it to get contract detailed information.
+- `checkStorage`: check the storage differences between contracts.
 
 ## Usage
 
