@@ -35,7 +35,7 @@ task('insight', 'Print the size in bytes of each contract method, assembly and r
 
 task('checkStorage', 'Print the storage slots of a set of contracts')
   .addFlag('nocompile', "Don't compile before running this task")
-  .addOptionalParam('only', 'Print only those that matches')
+  .addParam('only', 'Print only those that matches')
   .addOptionalParam('except', 'Skip those that matches')
   .addFlag('all', 'Print everything, even slots that matches')
   .setAction(async function (args, hre) {
@@ -43,9 +43,8 @@ task('checkStorage', 'Print the storage slots of a set of contracts')
       await hre.run(TASK_COMPILE, {noSizeContracts: true});
     }
     const fullNames = await hre.artifacts.getAllFullyQualifiedNames();
-    // eslint-disable-next-line no-undef
-    const only =
-      [].concat(...(args.only && Array.isArray(args.only) ? args.only : [args.only]).map(x => x.split(",")));
+    const only = args.only &&
+      [].concat(...(Array.isArray(args.only) ? args.only : [args.only]).map(x => x.split(",")));
     const except =
       args.except && Array.isArray(args.except) ? args.except : [args.except];
     const contractData = {};

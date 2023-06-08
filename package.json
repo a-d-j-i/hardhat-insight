@@ -26,6 +26,7 @@
         "hardhat": "^2.0.0"
     },
     "devDependencies": {
+        "@maticnetwork/fx-portal": "^1.0.5",
         "hardhat": "^2.0.0"
     },
     "bugs": {
