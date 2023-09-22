@@ -50,10 +50,18 @@ contract Greeter is Base1, Base2 {
     SG2 ifaceStruct2;
     uint256 e1;
 
+    enum ENUM {
+        ENUM1,
+        ENUM2,
+        ENUM3
+    }
+
+    ENUM enumVal;
     constructor(string memory _greeting) ___constructorVisibility___ Base1(_greeting)  Base2(_greeting) {
         console.log("Deploying a Greeter with greeting:", _greeting);
         greeting = _greeting;
         //>7        _s().var1 = 1;
+        enumVal = ENUM.ENUM2;
     }
 
     function greet() public view returns (string memory) {
